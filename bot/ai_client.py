@@ -1,4 +1,6 @@
 import logging
+import tempfile
+from pathlib import Path
 
 from groq import AsyncGroq
 
@@ -15,6 +17,7 @@ SYSTEM_PROMPT = (
 
 TEXT_MODEL = "llama-3.3-70b-versatile"
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+WHISPER_MODEL = "whisper-large-v3"
 
 
 class AIClient:
@@ -39,6 +42,24 @@ class AIClient:
                 "В данный момент я не могу ответить, "
                 "но обязательно свяжусь с вами в ближайшее время."
             )
+
+    async def transcribe_audio(self, audio_bytes: bytes, filename: str = "audio.ogg") -> str:
+        """Transcribe audio using Whisper."""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=True) as tmp:
+                tmp.write(audio_bytes)
+                tmp.flush()
+                with open(tmp.name, "rb") as audio_file:
+                    transcription = await self.client.audio.transcriptions.create(
+                        file=(filename, audio_file.read()),
+                        model=WHISPER_MODEL,
+                        language="ru",
+                    )
+            logger.info("Audio transcribed: %s", transcription.text[:100])
+            return transcription.text
+        except Exception as e:
+            logger.error("Whisper transcription error: %s", e, exc_info=True)
+            return ""
 
     async def _text_reply(
         self, user_message: str, chat_history: list[dict] | None = None
