@@ -1,5 +1,6 @@
 import base64
 import io
+import logging
 
 from aiogram import Bot, F, Router
 from aiogram.types import Message
@@ -9,23 +10,28 @@ from bot.ai_client import AIClient
 from bot.db.repo import get_chat_context, get_or_create_user, save_message
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 async def _get_image_base64(message: Message, bot: Bot) -> str | None:
     """Download photo from message and return as base64 string."""
-    photo = None
-    if message.photo:
-        photo = message.photo[-1]
-    elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
-        photo = message.document
+    try:
+        photo = None
+        if message.photo:
+            photo = message.photo[-1]
+        elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
+            photo = message.document
 
-    if not photo:
+        if not photo:
+            return None
+
+        file = await bot.get_file(photo.file_id)
+        buffer = io.BytesIO()
+        await bot.download_file(file.file_path, buffer)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except Exception as e:
+        logger.error("Failed to download image: %s", e, exc_info=True)
         return None
-
-    file = await bot.get_file(photo.file_id)
-    buffer = io.BytesIO()
-    await bot.download_file(file.file_path, buffer)
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 @router.message(F.text | F.photo | F.document)
@@ -45,7 +51,7 @@ async def handle_message(
         full_name=message.from_user.full_name,
     )
 
-    chat_history = await get_chat_context(session, message.from_user.id, limit=20)
+    chat_history = await get_chat_context(session, message.from_user.id)
 
     reply_text = await ai.generate_reply(
         user_message=text,

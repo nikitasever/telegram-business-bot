@@ -1,4 +1,3 @@
-import base64
 import logging
 
 from groq import AsyncGroq
@@ -14,9 +13,8 @@ SYSTEM_PROMPT = (
     "Учитывай контекст предыдущих сообщений в разговоре."
 )
 
-# Text model for chat, vision model for images
 TEXT_MODEL = "llama-3.3-70b-versatile"
-VISION_MODEL = "llama-3.2-90b-vision-preview"
+VISION_MODEL = "llama-3.2-11b-vision-preview"
 
 
 class AIClient:
@@ -30,43 +28,58 @@ class AIClient:
         image_base64: str | None = None,
     ) -> str:
         try:
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-            # Add chat history for context
-            if chat_history:
-                messages.extend(chat_history)
-
-            # Build current message
             if image_base64:
-                # Vision request with image
-                content = []
-                if user_message:
-                    content.append({"type": "text", "text": user_message})
-                else:
-                    content.append({"type": "text", "text": "Что изображено на этой картинке? Опиши подробно."})
-                content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_base64}",
-                    },
-                })
-                messages.append({"role": "user", "content": content})
-                model = VISION_MODEL
+                return await self._vision_reply(user_message, image_base64)
             else:
-                messages.append({"role": "user", "content": user_message})
-                model = TEXT_MODEL
-
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=500,
-                temperature=0.7,
-            )
-            return response.choices[0].message.content
+                return await self._text_reply(user_message, chat_history)
         except Exception as e:
-            logger.error("Groq API error: %s", e)
+            logger.error("Groq API error: %s", e, exc_info=True)
             return (
                 "Спасибо за ваше сообщение! "
                 "В данный момент я не могу ответить, "
                 "но обязательно свяжусь с вами в ближайшее время."
             )
+
+    async def _text_reply(
+        self, user_message: str, chat_history: list[dict] | None = None
+    ) -> str:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if chat_history:
+            messages.extend(chat_history)
+        messages.append({"role": "user", "content": user_message})
+
+        response = await self.client.chat.completions.create(
+            model=TEXT_MODEL,
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content
+
+    async def _vision_reply(self, user_message: str, image_base64: str) -> str:
+        prompt = user_message if user_message else "Что изображено на этой картинке? Опиши подробно."
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}",
+                        },
+                    },
+                ],
+            }
+        ]
+
+        logger.info("Sending vision request, image size: %d bytes", len(image_base64))
+
+        response = await self.client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content

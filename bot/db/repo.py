@@ -37,13 +37,13 @@ async def get_user_history(session: AsyncSession, telegram_id: int, limit: int =
     return result.scalars().all()
 
 
-async def get_chat_context(session: AsyncSession, telegram_id: int, limit: int = 10) -> list[dict]:
-    """Get recent messages formatted as chat history for AI context."""
+async def get_chat_context(session: AsyncSession, telegram_id: int) -> list[dict]:
+    """Get all messages formatted as chat history for AI context."""
     result = await session.execute(
         select(Message)
         .where(Message.telegram_id == telegram_id)
         .order_by(Message.created_at.desc())
-        .limit(limit)
+        .limit(100)  # safety limit to avoid token overflow
     )
     messages = list(reversed(result.scalars().all()))
 
