@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from bot.config import Config
 from bot.db.engine import create_db_engine
 from bot.db.models import Base
+from bot.gemini import GeminiClient
 from bot.handlers import business, history, messages, start
 from bot.middlewares.db import DbSessionMiddleware
 
@@ -20,8 +21,10 @@ async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    gemini = GeminiClient(api_key=config.gemini_api_key)
+
     bot = Bot(token=config.bot_token)
-    dp = Dispatcher()
+    dp = Dispatcher(gemini=gemini)
 
     dp.message.middleware(DbSessionMiddleware(session_factory))
     dp.business_message.middleware(DbSessionMiddleware(session_factory))

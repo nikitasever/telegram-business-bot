@@ -10,6 +10,7 @@ load_dotenv()
 class Config:
     bot_token: str
     database_url: str
+    gemini_api_key: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -21,7 +22,11 @@ class Config:
         if not database_url:
             raise ValueError("DATABASE_URL is not set")
 
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+
         # Railway gives postgresql://, SQLAlchemy async needs postgresql+asyncpg://
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-        return cls(bot_token=bot_token, database_url=database_url)
+        return cls(bot_token=bot_token, database_url=database_url, gemini_api_key=gemini_api_key)
