@@ -21,4 +21,7 @@ class Config:
         if not database_url:
             raise ValueError("DATABASE_URL is not set")
 
+        # Railway gives postgresql://, SQLAlchemy async needs postgresql+asyncpg://
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
         return cls(bot_token=bot_token, database_url=database_url)
