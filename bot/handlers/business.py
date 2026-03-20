@@ -47,7 +47,7 @@ async def handle_business_message(
     )
 
     # Load chat history for context
-    chat_history = await get_chat_context(session, message.from_user.id, limit=10)
+    chat_history = await get_chat_context(session, message.from_user.id, limit=20)
 
     reply_text = await ai.generate_reply(
         user_message=text,
