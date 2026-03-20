@@ -1,12 +1,14 @@
+import io
 import logging
 
 from aiogram import Bot, Router
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.ai_client import AIClient
 from bot.db.repo import get_chat_context, get_or_create_user, save_message
 from bot.media import get_audio_bytes, get_document_text, get_image_base64, get_video_frames_base64
+from bot.tts import text_to_speech
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -98,3 +100,9 @@ async def handle_business_message(
     )
 
     await message.answer(reply_text)
+
+    # Send voice version too
+    voice_bytes = await text_to_speech(reply_text)
+    if voice_bytes:
+        voice_file = BufferedInputFile(voice_bytes, filename="reply.ogg")
+        await message.answer_voice(voice_file)
