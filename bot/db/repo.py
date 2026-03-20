@@ -35,3 +35,21 @@ async def get_user_history(session: AsyncSession, telegram_id: int, limit: int =
         .limit(limit)
     )
     return result.scalars().all()
+
+
+async def get_chat_context(session: AsyncSession, telegram_id: int, limit: int = 10) -> list[dict]:
+    """Get recent messages formatted as chat history for AI context."""
+    result = await session.execute(
+        select(Message)
+        .where(Message.telegram_id == telegram_id)
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    messages = list(reversed(result.scalars().all()))
+
+    chat_history = []
+    for msg in messages:
+        chat_history.append({"role": "user", "content": msg.text})
+        chat_history.append({"role": "assistant", "content": msg.bot_reply})
+
+    return chat_history
