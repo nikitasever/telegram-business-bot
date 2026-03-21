@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.ai_client import AIClient
 from bot.db.repo import get_chat_context, get_or_create_user, save_message
 from bot.media import get_audio_bytes, get_document_text, get_image_base64, get_video_frames_base64
+from bot.memes import download_meme, fetch_meme_url
 from bot.tts import text_to_speech
 
 router = Router()
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_media(message: Message) -> tuple[str | None, str | None, str | None]:
-    """Detect media type, file_id, and file_name from message."""
     if message.photo:
         return "photo", message.photo[-1].file_id, None
     if message.video:
@@ -37,14 +37,10 @@ async def handle_message(
     text = message.text or message.caption or ""
     image_base64 = None
     extra_context = ""
-
-    # Detect media
     media_type, file_id, file_name = _detect_media(message)
 
-    # --- Image ---
     image_base64 = await get_image_base64(message, bot)
 
-    # --- Voice / Audio ---
     if message.voice or message.audio:
         audio_data, filename = await get_audio_bytes(message, bot)
         if audio_data:
@@ -52,7 +48,6 @@ async def handle_message(
             if transcription:
                 extra_context += f"[Голосовое сообщение]: {transcription}\n"
 
-    # --- Video ---
     if message.video or (
         message.document and message.document.mime_type and message.document.mime_type.startswith("video/")
     ):
@@ -61,7 +56,6 @@ async def handle_message(
             image_base64 = frames[0]
             extra_context += f"[Видео: извлечено {len(frames)} кадров для анализа]\n"
 
-    # --- Video note (circle video) ---
     if message.video_note:
         audio_data, filename = await get_audio_bytes(message, bot)
         if audio_data:
@@ -72,19 +66,16 @@ async def handle_message(
         if frames:
             image_base64 = frames[0]
 
-    # --- Documents ---
     if message.document and not image_base64:
         doc_text = await get_document_text(message, bot)
         if doc_text:
             extra_context += f"[Содержимое документа]:\n{doc_text}\n"
 
-    # Build final message
     full_message = ""
     if extra_context:
         full_message += extra_context.strip() + "\n\n"
     if text:
         full_message += text
-
     full_message = full_message.strip()
 
     if not full_message and not image_base64:
@@ -99,7 +90,7 @@ async def handle_message(
 
     chat_history = await get_chat_context(session, message.from_user.id, limit=30)
 
-    reply_text = await ai.generate_reply(
+    reply_text, meme_query = await ai.generate_reply(
         user_message=full_message,
         chat_history=chat_history,
         image_base64=image_base64,
@@ -115,7 +106,7 @@ async def handle_message(
         file_name=file_name,
     )
 
-    # Set reaction on user's message (only direct messages)
+    # Set reaction
     try:
         reaction_emoji = await ai.pick_reaction(full_message or "медиа")
         if reaction_emoji:
@@ -125,7 +116,19 @@ async def handle_message(
 
     await message.answer(reply_text)
 
-    # Send voice version too
+    # Send meme if AI suggested one
+    if meme_query:
+        try:
+            meme_url = await fetch_meme_url(meme_query)
+            if meme_url:
+                meme_bytes = await download_meme(meme_url)
+                if meme_bytes:
+                    meme_file = BufferedInputFile(meme_bytes, filename="meme.jpg")
+                    await message.answer_photo(meme_file)
+        except Exception as e:
+            logger.warning("Failed to send meme: %s", e)
+
+    # Send voice version
     voice_bytes = await text_to_speech(reply_text)
     if voice_bytes:
         voice_file = BufferedInputFile(voice_bytes, filename="reply.ogg")

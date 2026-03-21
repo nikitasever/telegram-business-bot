@@ -7,12 +7,20 @@ from groq import AsyncGroq
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "Ты — личный ассистент, который отвечает на сообщения от имени владельца аккаунта. "
-    "Отвечай вежливо, по-деловому и по существу. "
-    "Если не знаешь ответа — скажи, что владелец свяжется лично. "
-    "Отвечай на том же языке, на котором написано сообщение. "
-    "Не используй markdown-разметку, отвечай простым текстом. "
-    "Учитывай контекст предыдущих сообщений в разговоре."
+    "Ты — умный личный ассистент, который ведёт переписку от имени владельца аккаунта. "
+    "Ты анализируешь диалог в реальном времени и помогаешь в общении.\n\n"
+    "Правила:\n"
+    "- Отвечай естественно, как живой человек, а не робот\n"
+    "- Подстраивайся под тон собеседника: если шутят — шути в ответ, если серьёзно — будь серьёзен\n"
+    "- Используй контекст переписки для релевантных ответов\n"
+    "- Если уместно — добавь юмор, лёгкую иронию или эмодзи\n"
+    "- Если не знаешь ответа — скажи, что владелец свяжется лично\n"
+    "- Отвечай на том же языке, на котором написано сообщение\n"
+    "- Не используй markdown-разметку\n"
+    "- Будь краток, не пиши простыни текста\n\n"
+    "ВАЖНО: Если в конце ответа уместен мем — добавь на последней строке тег [MEME:тема], "
+    "где тема — короткое описание мема на английском. Например: [MEME:waiting], [MEME:success], "
+    "[MEME:confused]. Добавляй мем только когда это реально уместно и смешно, не на каждое сообщение."
 )
 
 REACTION_PROMPT = (
@@ -26,7 +34,6 @@ TEXT_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
     "gemma2-9b-it",
-    "llama-guard-3-8b",
 ]
 
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -43,22 +50,35 @@ class AIClient:
         user_message: str,
         chat_history: list[dict] | None = None,
         image_base64: str | None = None,
-    ) -> str:
+    ) -> tuple[str, str | None]:
+        """Returns (reply_text, meme_query_or_none)."""
         try:
             if image_base64:
-                return await self._vision_reply(user_message, image_base64)
+                raw = await self._vision_reply(user_message, image_base64)
             else:
-                return await self._text_reply(user_message, chat_history)
+                raw = await self._text_reply(user_message, chat_history)
+            return self._extract_meme(raw)
         except Exception as e:
             logger.error("All AI models failed: %s", e, exc_info=True)
             return (
                 "Спасибо за ваше сообщение! "
                 "В данный момент я не могу ответить, "
-                "но обязательно свяжусь с вами в ближайшее время."
+                "но обязательно свяжусь с вами в ближайшее время.",
+                None,
             )
 
+    @staticmethod
+    def _extract_meme(text: str) -> tuple[str, str | None]:
+        """Extract [MEME:topic] tag from AI response."""
+        import re
+        match = re.search(r'\[MEME:([^\]]+)\]', text)
+        if match:
+            meme_query = match.group(1).strip()
+            clean_text = text[:match.start()].strip()
+            return clean_text, meme_query
+        return text, None
+
     async def transcribe_audio(self, audio_bytes: bytes, filename: str = "audio.ogg") -> str:
-        """Transcribe audio using Whisper."""
         try:
             with tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=True) as tmp:
                 tmp.write(audio_bytes)
@@ -76,7 +96,6 @@ class AIClient:
             return ""
 
     async def pick_reaction(self, user_message: str) -> str | None:
-        """Pick a suitable emoji reaction for the message."""
         try:
             response = await self.client.chat.completions.create(
                 model=REACTION_MODEL,
@@ -104,7 +123,6 @@ class AIClient:
             messages.extend(chat_history)
         messages.append({"role": "user", "content": user_message})
 
-        # Try each model in the fallback chain
         last_error = None
         for model in TEXT_MODELS:
             try:
@@ -113,7 +131,7 @@ class AIClient:
                     model=model,
                     messages=messages,
                     max_tokens=500,
-                    temperature=0.7,
+                    temperature=0.8,
                 )
                 logger.info("Success with model: %s", model)
                 return response.choices[0].message.content
@@ -148,6 +166,6 @@ class AIClient:
             model=VISION_MODEL,
             messages=messages,
             max_tokens=500,
-            temperature=0.7,
+            temperature=0.8,
         )
         return response.choices[0].message.content
