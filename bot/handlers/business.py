@@ -99,11 +99,16 @@ async def handle_business_message(
         bot_reply=reply_text,
     )
 
-    # Set reaction on user's message
+    # Set reaction on user's message (via business connection)
     try:
         reaction_emoji = await ai.pick_reaction(full_message or "медиа")
         if reaction_emoji:
-            await message.react([ReactionTypeEmoji(emoji=reaction_emoji)])
+            await bot.set_message_reaction(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reaction=[ReactionTypeEmoji(emoji=reaction_emoji)],
+                is_big=False,
+            )
     except Exception as e:
         logger.warning("Failed to set reaction: %s", e)
 
