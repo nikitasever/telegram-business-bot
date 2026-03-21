@@ -86,7 +86,7 @@ async def handle_business_message(
         full_name=message.from_user.full_name,
     )
 
-    chat_history = await get_chat_context(session, message.from_user.id)
+    chat_history = await get_chat_context(session, message.from_user.id, limit=30)
 
     reply_text = await ai.generate_reply(
         user_message=full_message,
