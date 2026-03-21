@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import sqlalchemy
 from aiogram import Bot, Dispatcher
 
 from bot.config import Config
@@ -20,6 +21,16 @@ async def main():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add new columns if they don't exist (migration)
+        for col_sql in [
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(20)",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_id VARCHAR(200)",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)",
+        ]:
+            try:
+                await conn.execute(sqlalchemy.text(col_sql))
+            except Exception:
+                pass
 
     ai = AIClient(api_key=config.groq_api_key)
 
