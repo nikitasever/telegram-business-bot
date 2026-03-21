@@ -1,6 +1,8 @@
 import io
 import logging
 
+import aiogram
+import aiogram.methods
 from aiogram import Bot, Router
 from aiogram.types import BufferedInputFile, Message, ReactionTypeEmoji
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,11 +105,14 @@ async def handle_business_message(
     try:
         reaction_emoji = await ai.pick_reaction(full_message or "медиа")
         if reaction_emoji:
-            await bot.set_message_reaction(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reaction=[ReactionTypeEmoji(emoji=reaction_emoji)],
-                is_big=False,
+            await bot(
+                aiogram.methods.SetMessageReaction(
+                    chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    reaction=[ReactionTypeEmoji(emoji=reaction_emoji)],
+                    is_big=False,
+                    business_connection_id=message.business_connection_id,
+                )
             )
     except Exception as e:
         logger.warning("Failed to set reaction: %s", e)
