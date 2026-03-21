@@ -101,28 +101,29 @@ async def handle_business_message(
         bot_reply=reply_text,
     )
 
-    # Set reaction on user's message (direct API call for business messages)
+    # Set reaction on user's message
     try:
         reaction_emoji = await ai.pick_reaction(full_message or "медиа")
+        logger.info("Will try reaction: '%s' on chat=%s msg=%s biz=%s",
+                     reaction_emoji, message.chat.id, message.message_id,
+                     message.business_connection_id)
         if reaction_emoji:
+            import json as json_mod
             import aiohttp
             url = f"https://api.telegram.org/bot{bot.token}/setMessageReaction"
             payload = {
                 "chat_id": message.chat.id,
                 "message_id": message.message_id,
-                "reaction": [{"type": "emoji", "emoji": reaction_emoji}],
-                "is_big": False,
+                "reaction": json_mod.dumps([{"type": "emoji", "emoji": reaction_emoji}]),
                 "business_connection_id": message.business_connection_id,
             }
+            logger.info("Reaction payload: %s", payload)
             async with aiohttp.ClientSession() as session_http:
-                async with session_http.post(url, json=payload) as resp:
+                async with session_http.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     result = await resp.json()
-                    if not result.get("ok"):
-                        logger.warning("Reaction API error: %s", result)
-                    else:
-                        logger.info("Reaction set successfully: %s", reaction_emoji)
+                    logger.info("Reaction API response: %s", result)
     except Exception as e:
-        logger.warning("Failed to set reaction: %s", e)
+        logger.warning("Failed to set reaction: %s", e, exc_info=True)
 
     await message.answer(reply_text)
 
