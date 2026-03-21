@@ -1,10 +1,7 @@
-import io
 import logging
 
-import aiogram
-import aiogram.methods
 from aiogram import Bot, Router
-from aiogram.types import BufferedInputFile, Message, ReactionTypeEmoji
+from aiogram.types import BufferedInputFile, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.ai_client import AIClient
@@ -39,12 +36,10 @@ async def handle_business_message(
     if message.video or message.video_note or (
         message.document and message.document.mime_type and message.document.mime_type.startswith("video/")
     ):
-        # Extract audio from video for transcription
         audio_data, filename = await get_audio_bytes(message, bot) if message.video_note else (None, None)
 
         frames = await get_video_frames_base64(message, bot)
         if frames:
-            # Analyze first frame as image
             image_base64 = frames[0]
             extra_context += f"[Видео: извлечено {len(frames)} кадров для анализа]\n"
 
@@ -100,28 +95,6 @@ async def handle_business_message(
         text=full_message or "(медиа)",
         bot_reply=reply_text,
     )
-
-    # Set reaction on user's message
-    try:
-        reaction_emoji = await ai.pick_reaction(full_message or "медиа")
-        if reaction_emoji:
-            import aiohttp
-            url = f"https://api.telegram.org/bot{bot.token}/setMessageReaction"
-            payload = {
-                "chat_id": message.chat.id,
-                "message_id": message.message_id,
-                "reaction": [{"type": "emoji", "emoji": reaction_emoji}],
-                "business_connection_id": message.business_connection_id,
-            }
-            logger.info("Reaction request: emoji=%s chat=%s msg=%s biz=%s",
-                         reaction_emoji, message.chat.id, message.message_id,
-                         message.business_connection_id)
-            async with aiohttp.ClientSession() as session_http:
-                async with session_http.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    result = await resp.json()
-                    logger.info("Reaction API response: %s", result)
-    except Exception as e:
-        logger.warning("Failed to set reaction: %s", e, exc_info=True)
 
     await message.answer(reply_text)
 

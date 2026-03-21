@@ -21,8 +21,16 @@ REACTION_PROMPT = (
     "Ответь ТОЛЬКО одним эмодзи, без текста."
 )
 
-TEXT_MODEL = "llama-3.3-70b-versatile"
+# Fallback chain: if one model hits rate limit, try the next
+TEXT_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "gemma2-9b-it",
+    "llama-guard-3-8b",
+]
+
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+REACTION_MODEL = "llama-3.1-8b-instant"
 WHISPER_MODEL = "whisper-large-v3"
 
 
@@ -42,7 +50,7 @@ class AIClient:
             else:
                 return await self._text_reply(user_message, chat_history)
         except Exception as e:
-            logger.error("Groq API error: %s", e, exc_info=True)
+            logger.error("All AI models failed: %s", e, exc_info=True)
             return (
                 "Спасибо за ваше сообщение! "
                 "В данный момент я не могу ответить, "
@@ -71,7 +79,7 @@ class AIClient:
         """Pick a suitable emoji reaction for the message."""
         try:
             response = await self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model=REACTION_MODEL,
                 messages=[
                     {"role": "system", "content": REACTION_PROMPT},
                     {"role": "user", "content": user_message},
@@ -80,7 +88,6 @@ class AIClient:
                 temperature=0.5,
             )
             emoji = response.choices[0].message.content.strip()
-            # Validate it's a single emoji (take first char/emoji)
             if emoji:
                 logger.info("Picked reaction: %s", emoji)
                 return emoji
@@ -97,13 +104,25 @@ class AIClient:
             messages.extend(chat_history)
         messages.append({"role": "user", "content": user_message})
 
-        response = await self.client.chat.completions.create(
-            model=TEXT_MODEL,
-            messages=messages,
-            max_tokens=500,
-            temperature=0.7,
-        )
-        return response.choices[0].message.content
+        # Try each model in the fallback chain
+        last_error = None
+        for model in TEXT_MODELS:
+            try:
+                logger.info("Trying model: %s", model)
+                response = await self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=500,
+                    temperature=0.7,
+                )
+                logger.info("Success with model: %s", model)
+                return response.choices[0].message.content
+            except Exception as e:
+                last_error = e
+                logger.warning("Model %s failed: %s", model, e)
+                continue
+
+        raise last_error
 
     async def _vision_reply(self, user_message: str, image_base64: str) -> str:
         prompt = user_message if user_message else "Что изображено на этой картинке? Опиши подробно."
