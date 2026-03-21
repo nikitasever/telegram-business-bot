@@ -15,6 +15,12 @@ SYSTEM_PROMPT = (
     "Учитывай контекст предыдущих сообщений в разговоре."
 )
 
+REACTION_PROMPT = (
+    "Выбери ОДНУ самую подходящую реакцию-эмодзи на это сообщение. "
+    "Доступные реакции: 👍 👎 ❤ 🔥 🥰 👏 😁 🤔 🤯 😱 🤬 😢 🎉 🤩 🤮 💩 🙏 👌 🕊 🤡 🥱 🥴 😍 🐳 ❤‍🔥 🌚 🌭 💯 🤣 ⚡ 🍌 🏆 💔 🤨 😐 🍓 🍾 💋 🖕 😈 😴 😭 🤓 👻 👨‍💻 👀 🎃 🙈 😇 😨 🤝 ✍ 🤗 🫡 🎅 🎄 ☃ 💅 🤪 🗿 🆒 💘 🙉 🦄 😘 💊 🙊 😎 👾 🤷‍♂ 🤷 🤷‍♀ 😡\n\n"
+    "Ответь ТОЛЬКО одним эмодзи, без текста."
+)
+
 TEXT_MODEL = "llama-3.3-70b-versatile"
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 WHISPER_MODEL = "whisper-large-v3"
@@ -60,6 +66,28 @@ class AIClient:
         except Exception as e:
             logger.error("Whisper transcription error: %s", e, exc_info=True)
             return ""
+
+    async def pick_reaction(self, user_message: str) -> str | None:
+        """Pick a suitable emoji reaction for the message."""
+        try:
+            response = await self.client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": REACTION_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                max_tokens=10,
+                temperature=0.5,
+            )
+            emoji = response.choices[0].message.content.strip()
+            # Validate it's a single emoji (take first char/emoji)
+            if emoji:
+                logger.info("Picked reaction: %s", emoji)
+                return emoji
+            return None
+        except Exception as e:
+            logger.error("Reaction pick error: %s", e, exc_info=True)
+            return None
 
     async def _text_reply(
         self, user_message: str, chat_history: list[dict] | None = None

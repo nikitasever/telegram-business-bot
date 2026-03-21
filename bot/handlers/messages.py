@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import Bot, Router
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, Message, ReactionTypeEmoji
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.ai_client import AIClient
@@ -91,6 +91,14 @@ async def handle_message(
         text=full_message or "(медиа)",
         bot_reply=reply_text,
     )
+
+    # Set reaction on user's message
+    try:
+        reaction_emoji = await ai.pick_reaction(full_message or "медиа")
+        if reaction_emoji:
+            await message.react([ReactionTypeEmoji(emoji=reaction_emoji)])
+    except Exception as e:
+        logger.warning("Failed to set reaction: %s", e)
 
     await message.answer(reply_text)
 
