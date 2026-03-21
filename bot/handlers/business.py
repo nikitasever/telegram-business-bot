@@ -104,22 +104,20 @@ async def handle_business_message(
     # Set reaction on user's message
     try:
         reaction_emoji = await ai.pick_reaction(full_message or "медиа")
-        logger.info("Will try reaction: '%s' on chat=%s msg=%s biz=%s",
-                     reaction_emoji, message.chat.id, message.message_id,
-                     message.business_connection_id)
         if reaction_emoji:
-            import json as json_mod
             import aiohttp
             url = f"https://api.telegram.org/bot{bot.token}/setMessageReaction"
             payload = {
                 "chat_id": message.chat.id,
                 "message_id": message.message_id,
-                "reaction": json_mod.dumps([{"type": "emoji", "emoji": reaction_emoji}]),
+                "reaction": [{"type": "emoji", "emoji": reaction_emoji}],
                 "business_connection_id": message.business_connection_id,
             }
-            logger.info("Reaction payload: %s", payload)
+            logger.info("Reaction request: emoji=%s chat=%s msg=%s biz=%s",
+                         reaction_emoji, message.chat.id, message.message_id,
+                         message.business_connection_id)
             async with aiohttp.ClientSession() as session_http:
-                async with session_http.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                async with session_http.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     result = await resp.json()
                     logger.info("Reaction API response: %s", result)
     except Exception as e:
