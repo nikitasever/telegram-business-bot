@@ -13,6 +13,23 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+def _detect_media(message: Message) -> tuple[str | None, str | None, str | None]:
+    """Detect media type, file_id, and file_name from message."""
+    if message.photo:
+        return "photo", message.photo[-1].file_id, None
+    if message.video:
+        return "video", message.video.file_id, message.video.file_name
+    if message.voice:
+        return "voice", message.voice.file_id, None
+    if message.audio:
+        return "audio", message.audio.file_id, message.audio.file_name
+    if message.video_note:
+        return "video", message.video_note.file_id, None
+    if message.document:
+        return "document", message.document.file_id, message.document.file_name
+    return None, None, None
+
+
 @router.business_message()
 async def handle_business_message(
     message: Message, session: AsyncSession, ai: AIClient, bot: Bot
@@ -20,6 +37,9 @@ async def handle_business_message(
     text = message.text or message.caption or ""
     image_base64 = None
     extra_context = ""
+
+    # Detect media
+    media_type, file_id, file_name = _detect_media(message)
 
     # --- Image ---
     image_base64 = await get_image_base64(message, bot)
@@ -67,8 +87,8 @@ async def handle_business_message(
     full_message = full_message.strip()
 
     logger.info(
-        "Business message from %s: text=%s, has_image=%s, extra=%s",
-        message.from_user.id, bool(text), bool(image_base64), bool(extra_context),
+        "Business message from %s: text=%s, has_image=%s, extra=%s, media=%s",
+        message.from_user.id, bool(text), bool(image_base64), bool(extra_context), media_type,
     )
 
     if not full_message and not image_base64:
@@ -94,6 +114,9 @@ async def handle_business_message(
         telegram_id=message.from_user.id,
         text=full_message or "(медиа)",
         bot_reply=reply_text,
+        media_type=media_type,
+        file_id=file_id,
+        file_name=file_name,
     )
 
     await message.answer(reply_text)
